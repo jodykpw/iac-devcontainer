@@ -2,7 +2,7 @@ include:
   - template: Security/Container-Scanning.gitlab-ci.yml
 
 variables:
-  FROM_IMAGE_NAME: "gitlab-registry.jodywan.com/container/iac-cicd"
+  FROM_IMAGE_NAME: "gitlab-registry.domain.com/container/iac-cicd"
   FROM_IMAGE_TAG: "1.0.0"
 
 stages:
@@ -26,6 +26,8 @@ kaniko-build:
       --context "${CI_PROJECT_DIR}"
       --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
       --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_TAG}"
+      --build-arg FROM_IMAGE_NAME=${FROM_IMAGE_NAME}
+      --build-arg FROM_IMAGE_TAG=${FROM_IMAGE_TAG}
   rules:
     - if: $CI_COMMIT_TAG
 
@@ -101,6 +103,8 @@ verify_apps:
     - tar --version || echo "tar command failed"
     - gzip --version || echo "gzip command failed"
     - git version || echo "git command failed"
+    - pre-commit --version || echo "pre-commit command failed"
+    - yamllint --version || echo "yamllint command failed"
   rules:
     - if: $CI_COMMIT_TAG
 
@@ -122,7 +126,7 @@ delete_remote_tag:
   stage: cleanup
   image: docker:24.0.6-git
   script:
-    - git remote set-url origin https://PAC_IAC_DEVCONTAINER_1:${PAC_IAC_DEVCONTAINER_1}@gitlab.jodywan.com/container-dev/iac-cicd.git
+    - git remote set-url origin https://PAC_IAC_DEVCONTAINER_1:${PAC_IAC_DEVCONTAINER_1}@gitlab.domain.com/container-dev/iac-cicd.git
     - git remote -v
     - git push --delete origin $CI_COMMIT_TAG
   when: on_failure

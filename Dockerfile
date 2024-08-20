@@ -15,6 +15,12 @@ RUN microdnf update -y && \
 # Ensure Python and Pip are in PATH
 ENV PATH="/usr/bin/python3:${PATH}"
 
+# Copy the requirements.txt file to the container's /app directory
+COPY requirements.txt /tmp/requirements.txt
+
+# Install packages listed in requirements.txt
+RUN python3 -m pip install -r /tmp/requirements.txt
+
 # Create a non-root user and group with UID and GID
 RUN groupadd -g 1001 adminjody && useradd -u 1000 -g adminjody -ms /bin/bash adminjody
 

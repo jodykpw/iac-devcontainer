@@ -39,6 +39,8 @@ The `Dockerfile` in this repository is designed to create a Docker image based o
 - tar
 - gzip
 - git
+- pre-commit
+- yamllint
 
 You can customise the versions of these tools by providing build arguments when building the Docker image.
 
