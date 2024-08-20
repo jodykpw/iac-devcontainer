@@ -1,0 +1,19 @@
+version: '3.8'
+services:
+  devcontainer:
+    image: ${IMAGE_NAME}:${IMAGE_TAG}
+    container_name: ${USERNAME}_devcontainer
+    user: ${UID}:${GID}
+    working_dir: /home/${USERNAME}
+    entrypoint: ["/bin/bash", "-c", "sleep infinity"]
+    volumes:
+      # Mount the host project folder into the container
+      - ${HOST_PROJECT_PATH}:/home/${USERNAME}/gitlab
+      # Mount the host's Git configuration file into the container
+      - ${HOST_GITCONFIG_PATH}:/home/${USERNAME}/.gitconfig
+      # Mount the host's .bashrc into the container
+      - ${BASHRC_PATH}:/home/${USERNAME}/.bashrc
+      # Mount the host's oh my bash into the container
+      - ${OH_MY_BASH_PATH}:/home/${USERNAME}/.oh-my-bash
+      # Mount the host's .terraformrc into the container
+      - ${TERRAFORMRC_PATH}:/home/${USERNAME}/.terraformrc

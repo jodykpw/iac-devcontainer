@@ -1,0 +1,162 @@
+include:
+  - template: Security/Container-Scanning.gitlab-ci.yml
+
+variables:
+  FROM_IMAGE_NAME: "gitlab-registry.jodywan.com/container/iac-cicd"
+  FROM_IMAGE_TAG: "1.0.0"
+
+stages:
+  - build
+  - test
+  - cleanup
+  - release
+
+kaniko-build:
+  stage: build
+  image:
+    # The kaniko debug image is recommended (gcr.io/kaniko-project/executor:debug) because it has a shell,
+    # and a shell is required for an image to be used with GitLab CI/CD.
+    # Kaniko Release: https://github.com/GoogleContainerTools/kaniko/releases
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  # Use kaniko to build Docker images
+  # https://docs.gitlab.com/ee/ci/docker/using_kaniko.html
+  script:
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_TAG}"
+  rules:
+    - if: $CI_COMMIT_TAG
+
+container_scanning:
+  # https://docs.gitlab.com/ee/user/application_security/container_scanning/#available-cicd-variables
+  variables:
+    # Repository: Self Repo
+    CS_IMAGE: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_TAG}
+    CS_DOCKERFILE_PATH: Dockerfile
+    GIT_STRATEGY: fetch
+    SECURE_LOG_LEVEL: info
+    CS_SEVERITY_THRESHOLD: LOW
+  needs: ["kaniko-build"]
+  rules:
+    - if: $CI_COMMIT_TAG
+
+check_container_scanning:
+  stage: test
+  image: alpine:latest
+  variables:
+    # If ALLOW_FAILURE is set to true, the job will not fail regardless of the count of high and critical vulnerabilities.
+    # If ALLOW_FAILURE is set to false, the job will fail if high or critical vulnerabilities are found.
+    ALLOW_FAILURE: false
+  allow_failure: false # Allows this job to fail without marking the entire pipeline as failed
+  script:
+    - >
+      apk update &&
+      apk add jq &&
+      HIGH_COUNT=$(cat ./gl-container-scanning-report.json | jq '.vulnerabilities | map(select(.severity=="High")) | length') &&
+      CRITICAL_COUNT=$(cat ./gl-container-scanning-report.json | jq '.vulnerabilities | map(select(.severity=="Critical")) | length') &&
+      MEDIUM_COUNT=$(cat ./gl-container-scanning-report.json | jq '.vulnerabilities | map(select(.severity=="Medium")) | length') &&
+      LOW_COUNT=$(cat ./gl-container-scanning-report.json | jq '.vulnerabilities | map(select(.severity=="Low")) | length') &&
+      UNKNOWN_COUNT=$(cat ./gl-container-scanning-report.json | jq '.vulnerabilities | map(select(.severity=="Unknown")) | length') &&
+      FAIL_COUNT=$((HIGH_COUNT + CRITICAL_COUNT)) &&
+      TOTAL_COUNT=$((HIGH_COUNT + CRITICAL_COUNT + MEDIUM_COUNT + LOW_COUNT + UNKNOWN_COUNT)) &&
+      echo "Number of high vulnerabilities: ${HIGH_COUNT}" &&
+      echo "Number of critical vulnerabilities: ${CRITICAL_COUNT}" &&
+      echo "Number of medium vulnerabilities: ${MEDIUM_COUNT}" &&
+      echo "Number of low vulnerabilities: ${LOW_COUNT}" &&
+      echo "Number of unknown vulnerabilities: ${UNKNOWN_COUNT}" &&
+      echo "Total vulnerabilities: ${TOTAL_COUNT}" &&
+      if [ $ALLOW_FAILURE = "true" ]; then
+        if [ $FAIL_COUNT -gt 0 ]; then
+          echo "High and critical vulnerabilities found. ALLOW_FAILURE is true. Job will not fail regardless of FAIL_COUNT."
+          exit 1
+        else
+          echo "No high or critical vulnerabilities found. ALLOW_FAILURE is true. Job will not fail."
+          exit 0
+        fi
+      else
+        if [ $FAIL_COUNT -gt 0 ]; then
+          echo "High and critical vulnerabilities found. Exiting with status 1."
+          exit 1
+        else
+          echo "No high or critical vulnerabilities found. Exiting with status 0."
+          exit 0
+        fi
+      fi
+  needs:
+    - job: container_scanning
+      artifacts: true
+  rules:
+    - if: $CI_COMMIT_TAG
+
+verify_apps:
+  stage: test
+  image: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_TAG}
+  script:
+    - python3 -m pip --versio || echo "python3-pip command failed"
+    - unzip -v || echo "unzip command failed"
+    - wget --version || echo "wget command failed"
+    - diff --version || echo "diff command failed"
+    - tar --version || echo "tar command failed"
+    - gzip --version || echo "gzip command failed"
+    - git version || echo "git command failed"
+  rules:
+    - if: $CI_COMMIT_TAG
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  script:
+    - echo "Running the release job."
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: 'Release $CI_COMMIT_TAG'
+    description: 'Release created using the release-cli.'
+  needs: ["check_container_scanning"]
+  rules:
+    - if: $CI_COMMIT_TAG
+
+# In a CI/CD pipeline, remove a Git tag if a build fails.
+delete_remote_tag:
+  stage: cleanup
+  image: docker:24.0.6-git
+  script:
+    - git remote set-url origin https://PAC_IAC_DEVCONTAINER_1:${PAC_IAC_DEVCONTAINER_1}@gitlab.jodywan.com/container-dev/iac-cicd.git
+    - git remote -v
+    - git push --delete origin $CI_COMMIT_TAG
+  when: on_failure
+  rules:
+    - if: $CI_COMMIT_TAG
+
+delete_repository_tag:
+  stage: cleanup
+  image: badouralix/curl-jq:alpine
+  script:
+    - echo "List registry repositories."
+    # Make the API request and save the response to a variable
+    - |
+      RESPONSE=$(curl --header "PRIVATE-TOKEN: ${PAC_IAC_DEVCONTAINER_1}" \
+      "${CI_API_V4_URL}/projects/$CI_PROJECT_ID/registry/repositories");
+    - echo $RESPONSE
+    # Parse the response JSON and extract the repository_id value  repository_id
+    - REPOSITORY_ID=$(echo "$RESPONSE" | jq -r '.[0].id')
+    - echo $REPOSITORY_ID
+    # Get details of a registry repository tag
+    - echo "Get details of a registry repository tag."
+    - |
+      curl --header "PRIVATE-TOKEN: ${PAC_IAC_DEVCONTAINER_1}" \
+      "$CI_API_V4_URL/projects/$CI_PROJECT_ID/registry/repositories/$REPOSITORY_ID/tags/${CI_COMMIT_TAG}";
+    # Check the if registry image exists in the gitlab container registry.
+    - echo "Check the if registry image exists in the gitlab container registry."
+    - |
+      curl -o /dev/null -s -w "%{http_code}\n" --header "PRIVATE-TOKEN: ${PAC_IAC_DEVCONTAINER_1}" \
+      "$CI_API_V4_URL/projects/$CI_PROJECT_ID/registry/repositories/$REPOSITORY_ID/tags/${CI_COMMIT_TAG}" -f;
+    # Delete a registry repository tag.
+    - echo "Delete a registry repository tag."
+    - |
+      curl --request DELETE --header "PRIVATE-TOKEN: ${PAC_IAC_DEVCONTAINER_1}" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/registry/repositories/$REPOSITORY_ID/tags/${CI_COMMIT_TAG}" -f;
+  when: on_failure
+  rules:
+    - if: $CI_COMMIT_TAG
