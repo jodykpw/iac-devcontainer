@@ -32,6 +32,7 @@ The `.gitlab-ci.yml` file defines the CI/CD pipeline with the following stages:
 
 The `Dockerfile` in this repository is designed to create a Docker image based on IaC CICD image. It includes various DevOps and infrastructure as code (IAC) tools commonly used in CI/CD workflows. The tools installed in this Docker image include:
 
+base-image:
 - python3-pip
 - wget
 - unzip
@@ -41,6 +42,14 @@ The `Dockerfile` in this repository is designed to create a Docker image based o
 - git
 - pre-commit
 - yamllint
+- yamlfmt
+- ansible
+- ansible-linit
+
+iac-devcontainer:
+- nano
+- vim
+- bash-completion
 
 You can customise the versions of these tools by providing build arguments when building the Docker image.
 

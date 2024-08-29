@@ -8,7 +8,7 @@ USER root
 
 # Update package lists and install dev packages
 RUN microdnf update -y && \
-    microdnf install -y python3-pip wget unzip diffutils tar gzip git && \
+    microdnf install -y nano vim bash-completion && \
     microdnf clean all && \
     python3 -m pip install --upgrade pip
 

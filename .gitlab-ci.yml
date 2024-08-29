@@ -3,7 +3,7 @@ include:
 
 variables:
   FROM_IMAGE_NAME: "gitlab-registry.domain.com/container/iac-cicd"
-  FROM_IMAGE_TAG: "1.0.0"
+  FROM_IMAGE_TAG: "1.1.1"
 
 stages:
   - build
